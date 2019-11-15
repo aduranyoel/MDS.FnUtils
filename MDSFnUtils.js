@@ -24,17 +24,75 @@ function Tx(tx, data, controller, thenFn, errorFn) {
         ? Tx.controller + '/' : "";
     var currentController = controller !== null ? controller : defaultController;
 
-    MDSJsUtil.execAjaxTrace({
+    RunAjax({
         url: SitePath + currentController + tx,
         data: data,
         success: function (res) {
-            thenFn(res.Data);
+            thenFn(res);
         },
         errorBE: function (err) {
             errorFn(err);
-            MDSMessageUtil.ErrorDialogShow(err.message, "AVISO", "Aceptar", err.detail);
+            MDSMessageUtil.ErrorDialogShow(err.ErrorMessage, "AVISO", "Aceptar", err.ErrorDetail);
         }
     });
+}
+function RunAjax(obj) {
+
+    obj = $.isPlainObject(obj) ? obj : {};
+    obj.data = $.isPlainObject(obj.data) ? obj.data : {};
+    obj.data.RedirectGroup = obj.data.RedirectGroup ? obj.data.RedirectGroup : UtilJs.redirect ? UtilJs.redirect : "";
+    obj.type = obj.type ? obj.type : "POST";
+    obj.dataType = obj.dataType ? obj.dataType : "json";
+    obj.contentType = obj.contentType ? obj.contentType : "application/json; charset=utf-8";
+    obj.cache = obj.cache ? obj.cache : false;
+    obj.timeout = obj.timeout ? obj.timeout : 180000;
+    obj.processData = obj.processData ? obj.processData : true;
+    var fnCompleteCopy = typeof obj.complete === "function" ? obj.complete : new Function;
+    var fnBeforeSendCopy = typeof obj.beforeSend === "function" ? obj.beforeSend : new Function;
+    var fnSuccessCopy = typeof obj.success === "function" ? obj.success : new Function;
+    obj.blockScreen = obj.blockScreen === false ? false : true;
+    obj.message = obj.message !== undefined ? obj.message : "EJECUTANDO...";
+    obj.beforeSend = function (jqXHR, settings) {
+        if (obj.blockScreen && $('.blockUI.blockOverlay').length === 0) {
+            $.blockUI({
+                message: obj.message,
+                baseZ: 50000,
+                css: {
+                    border: 'none',
+                    padding: '15px',
+                    backgroundColor: 'black',
+                    color: 'white',
+                    '-webkit-border-radius': '10px',
+                    '-moz-border-radius': '10px',
+                    'border-radius': '10px',
+                    opacity: .5
+                }
+            });
+        }
+        fnBeforeSendCopy.call(this, jqXHR, settings);
+    };
+    obj.complete = function (jqXHR, textStatus) {
+        setTimeout(function () {
+            if ($.active === 0) {
+                $.unblockUI();
+            }
+        }, 1000);
+        fnCompleteCopy.call(this, jqXHR, textStatus);
+    };
+    obj.success = function (data, textStatus, jqXHR) {
+        if (data.Code !== 0) {
+            typeof obj.errorBE === "function" ? obj.errorBE.call(this, data, textStatus, jqXHR)
+                : MDSMessageUtil.ErrorDialogShow(data.ErrorMessage, "AVISO", "Aceptar", data.ErrorDetail);
+        } else {
+            fnSuccessCopy.call(this, data.Data ? data.Data : null, data, textStatus, jqXHR);
+        }
+    };
+    obj.error = typeof obj.error === "function" ? obj.error : function (jqXHR, textStatus, errorThrown) {
+        MDSMessageUtil.ErrorDialogShow(jqXHR.statusText, "AVISO", "Aceptar", "");
+    };
+
+    obj.data = JSON.stringify(obj.data);
+    $.ajax(obj);
 }
 // Para obtener las variables de la URL
 function GetUrlParams(variable) {
@@ -78,7 +136,7 @@ function MostrarVista(mostrar, ocultar) {
     }
     hide(show);
 }
-// Para usar SweetAlert2 ver "^8.0.0" https://cdn.jsdelivr.net/npm/sweetalert2@latest/dist/sweetalert2.all.min.js
+// Para usar SweetAlert2 ver "8" https://cdn.jsdelivr.net/npm/sweetalert2@8.0.0/dist/sweetalert2.all.min.js
 function Msg(text, type, title, confirmButtonText, thenFn) {
 
     thenFn = typeof thenFn === "function" ? thenFn : new Function;
