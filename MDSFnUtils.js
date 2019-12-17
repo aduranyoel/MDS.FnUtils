@@ -8,9 +8,11 @@ function EsTipo(type, param) {
             case 'array':
                 return Array.isArray(param);
             case 'object':
-                return Object.prototype.toString.call(param) === '[object Object]';
+                return Object.prototype.toString.call(param) === "[object Object]";
             case 'formdata':
-                return Object.prototype.toString.call(param) === '[object FormData]';
+                return Object.prototype.toString.call(param) === "[object FormData]";
+            case 'file':
+                return Object.prototype.toString.call(param) === "[object File]";
             default:
                 return typeof param === type;
         }
@@ -30,7 +32,7 @@ function Tx(tx, data, controller, thenFn, errorFn) {
         }
     }
     tx = EsTipo('string', tx) ? tx : '';
-    data = EsTipo('object', data) ? data : null;
+    data = EsTipo('object', data) || EsTipo('formdata', data) ? data : null;
     controller = EsTipo('string', controller) ? controller + '/' : null;
 
     var defaultController = EsTipo('string', Tx.controller) ? Tx.controller + '/' : '';
@@ -50,24 +52,22 @@ function Tx(tx, data, controller, thenFn, errorFn) {
 }
 // Ajax personalizado
 function RunAjax(obj) {
+
     obj = EsTipo('object', obj) ? obj : {};
     var esFormData = EsTipo('formdata', obj.data);
-    obj.data = esFormData ? obj.data : EsTipo('object', obj.data) ? obj.data : {};
+    obj.data = esFormData || EsTipo('object', obj.data) ? obj.data : {};
+    obj.limit = EsTipo('boolean', obj.limit) ? obj.limit : true;
     if (!esFormData) {
-        obj.data.RedirectGroup = EsTipo('string', obj.data.RedirectGroup)
-            ? obj.data.RedirectGroup
-            : EsTipo('string', RunAjax.RedirectGroup)
-            ? RunAjax.RedirectGroup
-            : UtilJs.redirect
-            ? UtilJs.redirect
-            : '';
+        obj.data.RedirectGroup = EsTipo('string', obj.data.RedirectGroup) ? obj.data.RedirectGroup
+            : EsTipo('string', RunAjax.RedirectGroup) ? RunAjax.RedirectGroup
+                : typeof UtilJs !== "undefined" && UtilJs.hasOwnProperty('redirect') ? UtilJs.redirect : '';
+    } else if (obj.limit && MoreThanTenMbFilesFormData(obj.data)) {
+        Dlg.warning('El archivo excede el limite permitido: (10MB)');
+        return;
     }
-    obj.contentType =
-        EsTipo('string', obj.contentType) || EsTipo('boolean', obj.contentType)
-            ? obj.contentType
-            : 'application/json; charset=utf-8';
+    obj.contentType = EsTipo('string', obj.contentType) || EsTipo('boolean', obj.contentType) ? obj.contentType : esFormData ? false : 'application/json; charset=utf-8';
     obj.blockScreen = EsTipo('boolean', obj.blockScreen) ? obj.blockScreen : true;
-    obj.processData = EsTipo('boolean', obj.processData) ? obj.processData : true;
+    obj.processData = EsTipo('boolean', obj.processData) ? obj.processData : esFormData ? false : true;
     obj.message = EsTipo('string', obj.message) ? obj.message : 'EJECUTANDO...';
     obj.dataType = EsTipo('string', obj.dataType) ? obj.dataType : 'json';
     obj.timeout = EsTipo('number', obj.timeout) ? obj.timeout : 180000;
@@ -77,7 +77,7 @@ function RunAjax(obj) {
     var fnCompleteCopy = EsTipo('function', obj.complete) ? obj.complete : new Function();
     var fnSuccessCopy = EsTipo('function', obj.success) ? obj.success : new Function();
     function checkBlock() {
-        setTimeout(function() {
+        setTimeout(function () {
             if ($.active === 0) {
                 $.unblockUI();
             }
@@ -87,22 +87,22 @@ function RunAjax(obj) {
         return type === 'EvalError'
             ? 'An error has occurred in the eval() function'
             : type === 'RangeError'
-            ? "A number 'out of range' has occurred"
-            : type === 'ReferenceError'
-            ? 'An illegal reference has occurred'
-            : type === 'SyntaxError'
-            ? 'A syntax error has occurred'
-            : type === 'TypeError'
-            ? 'A type error has occurred'
-            : type === 'URIError'
-            ? 'An error in encodeURI() has occurred'
-            : '';
+                ? "A number 'out of range' has occurred"
+                : type === 'ReferenceError'
+                    ? 'An illegal reference has occurred'
+                    : type === 'SyntaxError'
+                        ? 'A syntax error has occurred'
+                        : type === 'TypeError'
+                            ? 'A type error has occurred'
+                            : type === 'URIError'
+                                ? 'An error in encodeURI() has occurred'
+                                : '';
     }
     function msgError(err) {
         checkBlock();
         Dlg.warning(checkTypeError(err.name), 'AVISO', err.stack);
     }
-    obj.beforeSend = function(jqXHR, settings) {
+    obj.beforeSend = function (jqXHR, settings) {
         if (obj.blockScreen && $('.blockUI.blockOverlay').length === 0) {
             $.blockUI({
                 message: obj.message,
@@ -125,7 +125,7 @@ function RunAjax(obj) {
             msgError(err);
         }
     };
-    obj.complete = function(jqXHR, textStatus) {
+    obj.complete = function (jqXHR, textStatus) {
         checkBlock();
         try {
             fnCompleteCopy.call(this, jqXHR, textStatus);
@@ -133,12 +133,8 @@ function RunAjax(obj) {
             msgError(err);
         }
     };
-    obj.success = function(data, textStatus, jqXHR) {
-        if (
-            data.hasOwnProperty('Code') &&
-            data.hasOwnProperty('ErrorMessage') &&
-            data.hasOwnProperty('ErrorDetail')
-        ) {
+    obj.success = function (data, textStatus, jqXHR) {
+        if (data.hasOwnProperty('Code') && data.hasOwnProperty('ErrorMessage') && data.hasOwnProperty('ErrorDetail')) {
             if (data.Code !== 0) {
                 if (EsTipo('function', obj.errorBE)) {
                     try {
@@ -150,9 +146,7 @@ function RunAjax(obj) {
                     Dlg.error(data.ErrorMessage, 'AVISO', data.ErrorDetail);
                 }
             } else {
-                var params = data.hasOwnProperty('Data')
-                    ? [data.Data, data, textStatus, jqXHR]
-                    : [data, textStatus, jqXHR];
+                var params = data.hasOwnProperty('Data') ? [data.Data, data, textStatus, jqXHR] : [data, textStatus, jqXHR];
                 try {
                     fnSuccessCopy.apply(this, params);
                 } catch (err) {
@@ -160,8 +154,7 @@ function RunAjax(obj) {
                 }
             }
             if (data.hasOwnProperty('Trace')) {
-                if (MDSJsUtil)
-                    if (MDSJsUtil.hasOwnProperty('addTraces')) MDSJsUtil.addTraces(data.Trace);
+                if (typeof MDSJsUtil !== "undefined" && MDSJsUtil.hasOwnProperty('addTraces')) MDSJsUtil.addTraces(data.Trace);
             }
         } else {
             try {
@@ -173,15 +166,16 @@ function RunAjax(obj) {
     };
     obj.error = EsTipo('function', obj.error)
         ? obj.error
-        : function(jqXHR, textStatus, errorThrown) {
-              Dlg.warning(jqXHR.statusText);
-          };
+        : function (jqXHR, textStatus, errorThrown) {
+            Dlg.warning(jqXHR.statusText);
+        };
 
     if (!esFormData) obj.data = JSON.stringify(obj.data);
     $.ajax(obj);
 }
 // Para usar BootstrapDialog https://cdnjs.com/libraries/bootstrap3-dialog
 function Dlg(message, title, detail, btnText, type) {
+
     function valid(param) {
         return typeof param === 'string';
     }
@@ -230,6 +224,7 @@ Dlg.warning = function(message, title, detail, btnText) {
 };
 // Poner Evento
 function PutEvent(target, event, global, callback) {
+
     callback = EsTipo('function', callback) ? callback : new Function();
     for (var i = 0, len = arguments.length; i < len; i++) {
         if (EsTipo('function', arguments[i])) {
@@ -242,24 +237,19 @@ function PutEvent(target, event, global, callback) {
     global = EsTipo('boolean', global) ? global : true;
 
     if (target !== null) {
-        $(global ? document : target).off(
-            event,
-            global ? (target === document ? '' : target) : null
-        );
+        $(global ? document : target).off(event, global ? target === document ? '' : target : null);
         $(global ? document : target).on(event, global ? target : null, callback);
     }
 }
 // Quitar Evento
 function DelEvent(target, event, global) {
+
     target = NotUndefinedNullFunction(target) ? target : null;
     event = EsTipo('string', event) ? event : 'click';
     global = EsTipo('boolean', global) ? global : true;
 
     if (target !== null) {
-        $(global ? document : target).off(
-            event,
-            global ? (target === document ? '' : target) : null
-        );
+        $(global ? document : target).off(event, global ? target === document ? '' : target : null);
     }
 }
 // Para obtener las variables de la URL
@@ -308,6 +298,7 @@ function MostrarVista(mostrar, ocultar) {
 }
 // Para usar SweetAlert2 ver "9" https://cdn.jsdelivr.net/npm/sweetalert2@9.4.0/dist/sweetalert2.all.min.js
 function Msg(text, type, title, confirmButtonText, thenFn, cancelFn, isConfirm) {
+
     thenFn = EsTipo('function', thenFn) ? thenFn : new Function();
     cancelFn = EsTipo('function', cancelFn) ? cancelFn : new Function();
     for (var i = 0, len = arguments.length; i < len; i++) {
@@ -323,16 +314,11 @@ function Msg(text, type, title, confirmButtonText, thenFn, cancelFn, isConfirm) 
     title = EsTipo('string', title) ? title : 'ATENCIÓN';
     type = EsTipo('string', type) ? type : 'warning';
     text = EsTipo('string', text) ? text : '';
-    confirmButtonText = EsTipo('string', confirmButtonText)
-        ? confirmButtonText
-        : isConfirm
-        ? 'SI, CONFIRMAR'
-        : 'ACEPTAR';
+    confirmButtonText = EsTipo('string', confirmButtonText) ? confirmButtonText : isConfirm ? 'SI, CONFIRMAR' : 'ACEPTAR';
 
     var styleMsg = document.createElement('style');
     styleMsg.type = 'text/css';
-    styleMsg.innerHTML =
-        ':root {font-size: 13px;}.swal2-title {margin: 0 0 15px;}.swal2-icon {margin: 1.25em auto 25px;width: 60px;height: 60px;}.swal2-title {margin: 0 0 15px;font-size: 20px;font-weight: 600;line-height: 24px;}div#swal2-content {font-size: 13px;color: rgb(106, 108, 111);}.swal2-styled {height: 34px;font-weight: 400;}.swal2-modal .swal2-styled {box-shadow: none !important;}';
+    styleMsg.innerHTML = ':root {font-size: 13px;}.swal2-title {margin: 0 0 15px;}.swal2-icon {margin: 1.25em auto 25px;width: 60px;height: 60px;}.swal2-title {margin: 0 0 15px;font-size: 20px;font-weight: 600;line-height: 24px;}div#swal2-content {font-size: 13px;color: rgb(106, 108, 111);}.swal2-styled {height: 34px;font-weight: 400;}.swal2-modal .swal2-styled {box-shadow: none !important;}';
     document.head.appendChild(styleMsg);
 
     Swal.fire({
@@ -349,14 +335,14 @@ function Msg(text, type, title, confirmButtonText, thenFn, cancelFn, isConfirm) 
         confirmButtonColor: isConfirm ? '#e74c3c' : '#34495e',
         reverseButtons: isConfirm
     })
-        .then(function(res) {
+        .then(function (res) {
             if (res.value) {
                 thenFn(res);
             } else if (res.dismiss === Swal.DismissReason.cancel) {
                 cancelFn(res);
             }
         })
-        .finally(function() {
+        .finally(function () {
             document.head.removeChild(styleMsg);
         });
 }
@@ -365,6 +351,7 @@ Msg.confirm = function(text, type, title, confirmButtonText, thenFn, cancelFn) {
 };
 // Delegacion de eventos
 function On(eventName, selector, handler) {
+
     (function(E, d, w) {
         if (!E.composedPath) {
             E.composedPath = function() {
@@ -402,6 +389,7 @@ function On(eventName, selector, handler) {
 }
 // Convertir Byte Array (byte[]) a base64
 function ByteArrToBase64(buffer) {
+
     var binary = '';
     var bytes = new Uint8Array(buffer);
     var len = bytes.byteLength;
@@ -417,12 +405,12 @@ function ByteSize(s) {
 // Extends Objetos : Object.assign
 function ExtendObj() {
     for (var i = 1, len = arguments.length; i < len; i++)
-        for (var key in arguments[i])
-            if (arguments[i].hasOwnProperty(key)) arguments[0][key] = arguments[i][key];
+        for (var key in arguments[i]) if (arguments[i].hasOwnProperty(key)) arguments[0][key] = arguments[i][key];
     return arguments[0];
 }
 // Simulador de Spread Operator
 function Spread() {
+
     var spreadArgs = [];
     var length = arguments.length;
     var currentArg;
@@ -440,12 +428,11 @@ function Spread() {
 // Convertir codigos HEX a valores RGB (#000000 -> rgb(0,0,0))
 function HexToRgb(hex) {
     var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
-    return result
-        ? parseInt(result[1], 16) + ',' + parseInt(result[2], 16) + ',' + parseInt(result[3], 16)
-        : null;
+    return result ? parseInt(result[1], 16) + ',' + parseInt(result[2], 16) + ',' + parseInt(result[3], 16) : null;
 }
 // Para obtener número(s) random verdadero(s)
 function RandomExact(cantidad) {
+
     cantidad = parseInt(cantidad) > 0 ? parseInt(cantidad) : 1;
     var result = [];
     for (var i = 0; i < cantidad; i++) {
@@ -455,6 +442,7 @@ function RandomExact(cantidad) {
 }
 // Para crear los Level
 function LevelConstructor(selector, name, props) {
+
     this.selector = typeof selector === 'string' ? selector : '';
     this.name = typeof name === 'string' ? name : '';
     if (Object.prototype.toString.call(props) === '[object Object]') {
@@ -465,6 +453,7 @@ function LevelConstructor(selector, name, props) {
 }
 // Para usar select2
 function PutSelect2(selector, data, option, settings) {
+
     selector = selector !== undefined ? selector : null;
     data = EsTipo('array', data) ? data : [];
     option = EsTipo('object', option) ? option : {};
@@ -472,20 +461,97 @@ function PutSelect2(selector, data, option, settings) {
     option.attr = EsTipo('object', option.attr) ? option.attr : {};
     settings = EsTipo('object', settings) ? settings : {};
 
-    $(selector).html('<option></option>');
+    $(selector).html("<option></option>");
 
-    data.forEach(function(d) {
+    data.forEach(function (d) {
         var opt = document.createElement('option');
         opt.innerHTML = d[option.text];
-        Object.keys(option.attr).forEach(function(a) {
+        Object.keys(option.attr).forEach(function (a) {
             opt.setAttribute(a, d[option.attr[a]]);
         });
         $(selector).append(opt);
     });
 
     var defaults = {
-        placeholder: '',
+        placeholder: "",
         allowClear: true
     };
     $(selector).select2($.extend({}, defaults, settings));
 }
+// Para obtener las key de un FormData
+function KeysFormData(fd) {
+
+    if (!EsTipo('formdata', fd)) return [];
+    var arrKeys = [];
+    fd.forEach(function (val, key) {
+        arrKeys.push(key);
+    });
+    return arrKeys;
+}
+// Para comprobar si algun archivo del FormData es mayor a 10 MB
+function MoreThanTenMbFilesFormData(fd) {
+
+    if (!EsTipo('formdata', fd)) return false;
+    var keysFD = KeysFormData(fd);
+    for (var i = 0, len = keysFD.length; i < len; i++) {
+        var k = keysFD[i];
+        if (EsTipo('file', fd.get(k)) && fd.get(k).size > 10485760) return true;
+    }
+    return false;
+}
+
+// #region POLYFILL
+// FormData https://github.com/jimmywarting/FormData
+(function () {
+    var k; function l(a) { var b = 0; return function () { return b < a.length ? { done: !1, value: a[b++] } : { done: !0 } } } var m = "function" == typeof Object.defineProperties ? Object.defineProperty : function (a, b, c) { a != Array.prototype && a != Object.prototype && (a[b] = c.value) }, n = "undefined" != typeof window && window === this ? this : "undefined" != typeof global && null != global ? global : this; function p() { p = function () { }; n.Symbol || (n.Symbol = r) } function t(a, b) { this.o = a; m(this, "description", { configurable: !0, writable: !0, value: b }) }
+    t.prototype.toString = function () { return this.o }; var r = function () { function a(c) { if (this instanceof a) throw new TypeError("Symbol is not a constructor"); return new t("jscomp_symbol_" + (c || "") + "_" + b++, c) } var b = 0; return a }(); function v() { p(); var a = n.Symbol.iterator; a || (a = n.Symbol.iterator = n.Symbol("Symbol.iterator")); "function" != typeof Array.prototype[a] && m(Array.prototype, a, { configurable: !0, writable: !0, value: function () { return x(l(this)) } }); v = function () { } }
+    function x(a) { v(); a = { next: a }; a[n.Symbol.iterator] = function () { return this }; return a } function y(a) { var b = "undefined" != typeof Symbol && Symbol.iterator && a[Symbol.iterator]; return b ? b.call(a) : { next: l(a) } } var z; if ("function" == typeof Object.setPrototypeOf) z = Object.setPrototypeOf; else { var A; a: { var B = { u: !0 }, C = {}; try { C.__proto__ = B; A = C.u; break a } catch (a) { } A = !1 } z = A ? function (a, b) { a.__proto__ = b; if (a.__proto__ !== b) throw new TypeError(a + " is not extensible"); return a } : null } var D = z;
+    function E() { this.h = !1; this.f = null; this.m = void 0; this.c = 1; this.l = this.v = 0; this.g = null } function F(a) { if (a.h) throw new TypeError("Generator is already running"); a.h = !0 } E.prototype.i = function (a) { this.m = a }; E.prototype.j = function (a) { this.g = { w: a, A: !0 }; this.c = this.v || this.l }; E.prototype["return"] = function (a) { this.g = { "return": a }; this.c = this.l }; function G(a, b) { a.c = 3; return { value: b } } function H(a) { this.a = new E; this.B = a }
+    H.prototype.i = function (a) { F(this.a); if (this.a.f) return I(this, this.a.f.next, a, this.a.i); this.a.i(a); return J(this) }; function K(a, b) { F(a.a); var c = a.a.f; if (c) return I(a, "return" in c ? c["return"] : function (d) { return { value: d, done: !0 } }, b, a.a["return"]); a.a["return"](b); return J(a) } H.prototype.j = function (a) { F(this.a); if (this.a.f) return I(this, this.a.f["throw"], a, this.a.i); this.a.j(a); return J(this) };
+    function I(a, b, c, d) { try { var e = b.call(a.a.f, c); if (!(e instanceof Object)) throw new TypeError("Iterator result " + e + " is not an object"); if (!e.done) return a.a.h = !1, e; var f = e.value } catch (g) { return a.a.f = null, a.a.j(g), J(a) } a.a.f = null; d.call(a.a, f); return J(a) } function J(a) { for (; a.a.c;)try { var b = a.B(a.a); if (b) return a.a.h = !1, { value: b.value, done: !1 } } catch (c) { a.a.m = void 0, a.a.j(c) } a.a.h = !1; if (a.a.g) { b = a.a.g; a.a.g = null; if (b.A) throw b.w; return { value: b["return"], done: !0 } } return { value: void 0, done: !0 } }
+    function L(a) { this.next = function (b) { return a.i(b) }; this["throw"] = function (b) { return a.j(b) }; this["return"] = function (b) { return K(a, b) }; v(); this[Symbol.iterator] = function () { return this } } function M(a, b) { var c = new L(new H(b)); D && D(c, a.prototype); return c }
+    if ("undefined" !== typeof Blob && ("undefined" === typeof FormData || !FormData.prototype.keys)) {
+        var N = function (a, b) { for (var c = 0; c < a.length; c++)b(a[c]) }, O = function (a, b, c) { return b instanceof Blob ? [String(a), b, void 0 !== c ? c + "" : "string" === typeof b.name ? b.name : "blob"] : [String(a), String(b)] }, P = function (a, b) { if (a.length < b) throw new TypeError(b + " argument required, but only " + a.length + " present."); }, Q = function (a) {
+            var b = y(a); a = b.next().value; var c = b.next().value; b = b.next().value; c instanceof Blob && (c = new File([c],
+                b, { type: c.type, lastModified: c.lastModified })); return [a, c]
+        }, R = "object" === typeof window ? window : "object" === typeof self ? self : this, S = R.FormData, T = R.XMLHttpRequest && R.XMLHttpRequest.prototype.send, U = R.Request && R.fetch, V = R.navigator && R.navigator.sendBeacon; p(); var W = R.Symbol && Symbol.toStringTag; W && (Blob.prototype[W] || (Blob.prototype[W] = "Blob"), "File" in R && !File.prototype[W] && (File.prototype[W] = "File")); try { new File([], "") } catch (a) {
+        R.File = function (b, c, d) {
+            b = new Blob(b, d); d = d && void 0 !== d.lastModified ? new Date(d.lastModified) :
+                new Date; Object.defineProperties(b, { name: { value: c }, lastModifiedDate: { value: d }, lastModified: { value: +d }, toString: { value: function () { return "[object File]" } } }); W && Object.defineProperty(b, W, { value: "File" }); return b
+        }
+        } p(); v(); var X = function (a) {
+        this.b = []; if (!a) return this; var b = this; N(a.elements, function (c) {
+            if (c.name && !c.disabled && "submit" !== c.type && "button" !== c.type) if ("file" === c.type) {
+                var d = c.files && c.files.length ? c.files : [new File([], "", { type: "application/octet-stream" })]; N(d, function (e) {
+                    b.append(c.name,
+                        e)
+                })
+            } else "select-multiple" === c.type || "select-one" === c.type ? N(c.options, function (e) { !e.disabled && e.selected && b.append(c.name, e.value) }) : "checkbox" === c.type || "radio" === c.type ? c.checked && b.append(c.name, c.value) : (d = "textarea" === c.type ? c.value.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n") : c.value, b.append(c.name, d))
+        })
+        }; k = X.prototype; k.append = function (a, b, c) { P(arguments, 2); var d = y(O.apply(null, arguments)), e = d.next().value, f = d.next().value; d = d.next().value; this.b.push([e, f, d]) }; k["delete"] = function (a) {
+            P(arguments,
+                1); var b = []; a = String(a); N(this.b, function (c) { c[0] !== a && b.push(c) }); this.b = b
+        }; k.entries = function b() { var c, d = this; return M(b, function (e) { 1 == e.c && (c = 0); if (3 != e.c) return c < d.b.length ? e = G(e, Q(d.b[c])) : (e.c = 0, e = void 0), e; c++; e.c = 2 }) }; k.forEach = function (b, c) { P(arguments, 1); for (var d = y(this), e = d.next(); !e.done; e = d.next()) { var f = y(e.value); e = f.next().value; f = f.next().value; b.call(c, f, e, this) } }; k.get = function (b) {
+            P(arguments, 1); var c = this.b; b = String(b); for (var d = 0; d < c.length; d++)if (c[d][0] === b) return Q(this.b[d])[1];
+            return null
+        }; k.getAll = function (b) { P(arguments, 1); var c = []; b = String(b); for (var d = 0; d < this.b.length; d++)this.b[d][0] === b && c.push(Q(this.b[d])[1]); return c }; k.has = function (b) { P(arguments, 1); b = String(b); for (var c = 0; c < this.b.length; c++)if (this.b[c][0] === b) return !0; return !1 }; k.keys = function c() { var d = this, e, f, g, h, u; return M(c, function (q) { 1 == q.c && (e = y(d), f = e.next()); if (3 != q.c) { if (f.done) { q.c = 0; return } g = f.value; h = y(g); u = h.next().value; return G(q, u) } f = e.next(); q.c = 2 }) }; k.set = function (c, d, e) {
+            P(arguments, 2);
+            c = String(c); for (var f = [], g = !1, h = 0; h < this.b.length; h++)this.b[h][0] === c ? g || (f[h] = O.apply(null, arguments), g = !0) : f.push(this.b[h]); g || f.push(O.apply(null, arguments)); this.b = f
+        }; k.values = function d() { var e = this, f, g, h, u, q; return M(d, function (w) { 1 == w.c && (f = y(e), g = f.next()); if (3 != w.c) { if (g.done) { w.c = 0; return } h = g.value; u = y(h); u.next(); q = u.next().value; return G(w, q) } g = f.next(); w.c = 2 }) }; X.prototype._asNative = function () {
+            for (var d = new S, e = y(this), f = e.next(); !f.done; f = e.next()) {
+                var g = y(f.value); f = g.next().value;
+                g = g.next().value; d.append(f, g)
+            } return d
+        }; X.prototype._blob = function () {
+            for (var d = "----formdata-polyfill-" + Math.random(), e = [], f = y(this), g = f.next(); !g.done; g = f.next()) { var h = y(g.value); g = h.next().value; h = h.next().value; e.push("--" + d + "\r\n"); h instanceof Blob ? e.push('Content-Disposition: form-data; name="' + g + '"; filename="' + h.name + '"\r\n', "Content-Type: " + (h.type || "application/octet-stream") + "\r\n\r\n", h, "\r\n") : e.push('Content-Disposition: form-data; name="' + g + '"\r\n\r\n' + h + "\r\n") } e.push("--" + d + "--");
+            return new Blob(e, { type: "multipart/form-data; boundary=" + d })
+        }; X.prototype[Symbol.iterator] = function () { return this.entries() }; X.prototype.toString = function () { return "[object FormData]" }; W && (X.prototype[W] = "FormData"); if (T) {
+            var Y = R.XMLHttpRequest.prototype.setRequestHeader; R.XMLHttpRequest.prototype.setRequestHeader = function (d, e) { Y.call(this, d, e); "content-type" === d.toLowerCase() && (this.s = !0) }; R.XMLHttpRequest.prototype.send = function (d) {
+                d instanceof X ? (d = d._blob(), this.s || this.setRequestHeader("Content-Type",
+                    d.type), T.call(this, d)) : T.call(this, d)
+            }
+        } if (U) { var Z = R.fetch; R.fetch = function (d, e) { e && e.body && e.body instanceof X && (e.body = e.body._blob()); return Z.call(this, d, e) } } V && (R.navigator.sendBeacon = function (d, e) { e instanceof X && (e = e._asNative()); return V.call(this, d, e) }); R.FormData = X
+    };
+})();
+
+// #endregion
