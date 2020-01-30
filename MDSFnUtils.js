@@ -50,6 +50,57 @@ function Tx(tx, data, controller, thenFn, errorFn) {
         }
     });
 }
+// Para las Trazas de las Tx
+Tx.initTrace = function (selector) {
+
+    Tx.trace = [];
+
+    $(selector).off();
+    $(selector).on('click', function () {
+
+        var tableTrace = '<label>- Transacciones</label>'
+            + '<table cellpadding="1" cellspacing="1" class="table table-responsive">'
+            + '<thead>'
+            + '<tr>'
+            + '<th>NOMBRE</th>'
+            + '<th style="text-align: right;">BACKEND TIME</th>'
+            + '</tr>'
+            + '</thead>'
+            + '<tbody>';
+
+        var datos = EsTipo('array', Tx.trace) ? Tx.trace : [];
+        datos.forEach(function (t) {
+            if (t.hasOwnProperty('Transactions')) {
+                t.Transactions.forEach(function (e) {
+                    tableTrace += '<tr><td>' + e.Name + '</td><td style="text-align: right;">' + e.BackendTime + '</td></tr>';
+                });
+            }
+        });
+        tableTrace += '</tbody></table>';
+
+        var htmlTrace = '<div id="TxTrace_Modal" class="modal fade" tabindex="-1" role="dialog" data-backdrop="static" data-keyboard="false" data-source="">'
+            + '<div class="modal-dialog modal-lg" role="document">'
+            + '<div class="modal-content">'
+            + '<div class="modal-header">'
+            + '<button type="button" class="close" data-dismiss="modal" aria-label="Close"><span aria-hidden="true">X</span></button>'
+            + '<h4 class="modal-title modal-title-md">TRACE</h4>'
+            + '</div>'
+            + '<div class="modal-body" style="max-height:400px;overflow:auto;">'
+            + '</div>'
+            + '<div class="modal-footer">'
+            + '<button type="button" class="btn btn-default" data-dismiss="modal"><span>CERRAR</span></button>'
+            + '</div>'
+            + '</div>'
+            + '</div>'
+            + '</div>';
+
+        if ($('#TxTrace_Modal').length === 0) $(document.body).append(htmlTrace);
+        $('#TxTrace_Modal .modal-body').html(tableTrace);
+
+        $('#TxTrace_Modal').modal();
+
+    });
+};
 // Ajax personalizado
 function RunAjax(obj) {
 
@@ -154,7 +205,10 @@ function RunAjax(obj) {
                 }
             }
             if (data.hasOwnProperty('Trace')) {
-                if (typeof MDSJsUtil !== "undefined" && MDSJsUtil.hasOwnProperty('addTraces')) MDSJsUtil.addTraces(data.Trace);
+                typeof Tx !== "undefined" && Tx.hasOwnProperty('trace') && EsTipo('array', Tx.trace)
+                    ? Tx.trace.push(data.Trace)
+                    : typeof MDSJsUtil !== "undefined" && MDSJsUtil.hasOwnProperty('addTraces')
+                        ? MDSJsUtil.addTraces(data.Trace) : null;
             }
         } else {
             try {
@@ -173,7 +227,7 @@ function RunAjax(obj) {
     if (!esFormData) obj.data = JSON.stringify(obj.data);
     $.ajax(obj);
 }
-// Para usar BootstrapDialog https://cdnjs.com/libraries/bootstrap3-dialog
+// Para mostrar Dialog
 function Dlg(message, title, detail, btnText, type) {
 
     function valid(param) {
@@ -183,44 +237,68 @@ function Dlg(message, title, detail, btnText, type) {
     title = valid(title) ? title : 'AVISO';
     btnText = valid(btnText) ? btnText : 'ACEPTAR';
     detail = valid(detail) ? detail : null;
-    type = valid(type) ? type : BootstrapDialog.TYPE_DEFAULT;
-
-    function siDetail(param) {
+    type = valid(type) ? type : '';
+    var isMovil = Dlg.movil === true;
+    function ifDetail(param) {
         if (param === null) return '';
         return (
             '<div>' +
             "<a href=\"javascript:void(0)\" onClick=\"var x = this.parentNode.querySelector('p'); x.style.display === 'none' ? x.style.display = '' : x.style.display = 'none';\">" +
             'Ver Detalle' +
             '</a>' +
-            '<p style="max-height: 400px;overflow: auto; display: none; word-break: break-all;">' +
+            '<p style="max-height: 40vh;overflow: auto; display: none; word-break: break-all;">' +
             detail +
             '</p>' +
             '</div>'
         );
     }
-    message = '<p style="word-break: break-all;">' + msg + '</p>' + siDetail(detail);
+    function msgBody() {
+        return '<p style="word-break: break-all;">' + msg + '</p>' + ifDetail(detail);
+    }
+    function typeMsg() {
+        switch (type) {
+            case 'warning':
+                return isMovil ? 'background-color: #f8ac59; color: white;' : 'background-color: rgb(240, 173, 78); color: white;';
+            case 'error':
+                return isMovil ? 'background-color: #23c6c8; color: white;' : 'background-color: rgb(217, 83, 79); color: white;';
+            default:
+                return '';
+        }
+    }
+    var modalContainer = document.createElement('div');
+    var modal = '' +
+        '<div class="modal fade" tabindex="-1" role="dialog" aria-hidden="true">' +
+        '<div class="modal-dialog" role="document">' +
+        '<div class="modal-content">' +
+        '<div class="modal-header" style="padding: 15px;height: 45px;display: block;  ' + typeMsg() + '">' +
+        '<button type="button" class="close" data-dismiss="modal" aria-label="Close">' +
+        '<span aria-hidden="true">&times;</span>' +
+        '</button>' +
+        '<h5 class="modal-title" style="font-size: 15px;margin: 0;font-weight: normal;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">::: ' +  title + ' :::</h5>' +
+        '</div>' +
+        '<div class="modal-body">' +
+        msgBody() +
+        '</div>' +
+        '<div class="modal-footer">' +
+        '<button type="button" class="btn btn-primary btn-dialog" data-dismiss="modal">' + btnText + '</button>' +
+        '</div>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
 
-    BootstrapDialog.show({
-        title: '::: ' + title + ' :::',
-        message: message,
-        type: type,
-        size: BootstrapDialog.SIZE_NORMAL,
-        buttons: [
-            {
-                label: btnText,
-                cssClass: 'btn-primary',
-                action: function(dialogItself) {
-                    dialogItself.close();
-                }
-            }
-        ]
+    modalContainer.innerHTML = modal;
+    document.body.appendChild(modalContainer);
+    $(modalContainer.querySelector('.modal')).on('hidden.bs.modal', function () {
+
+        document.body.removeChild(modalContainer);
     });
+    $(modalContainer.querySelector('.modal')).modal('show');
 }
-Dlg.error = function(message, title, detail, btnText) {
-    Dlg(message, title, detail, btnText, BootstrapDialog.TYPE_DANGER);
+Dlg.error = function (message, title, detail, btnText) {
+    Dlg(message, title, detail, btnText, 'error');
 };
-Dlg.warning = function(message, title, detail, btnText) {
-    Dlg(message, title, detail, btnText, BootstrapDialog.TYPE_WARNING);
+Dlg.warning = function (message, title, detail, btnText) {
+    Dlg(message, title, detail, btnText, 'warning');
 };
 // Poner Evento
 function PutEvent(target, event, global, callback) {
@@ -315,10 +393,11 @@ function Msg(text, type, title, confirmButtonText, thenFn, cancelFn, isConfirm) 
     type = EsTipo('string', type) ? type : 'warning';
     text = EsTipo('string', text) ? text : '';
     confirmButtonText = EsTipo('string', confirmButtonText) ? confirmButtonText : isConfirm ? 'SI, CONFIRMAR' : 'ACEPTAR';
+    var isMovile = Msg.movil === true;
 
     var styleMsg = document.createElement('style');
     styleMsg.type = 'text/css';
-    styleMsg.innerHTML = ':root {font-size: 13px;}.swal2-title {margin: 0 0 15px;}.swal2-icon {margin: 1.25em auto 25px;width: 60px;height: 60px;}.swal2-title {margin: 0 0 15px;font-size: 20px;font-weight: 600;line-height: 24px;}div#swal2-content {font-size: 13px;color: rgb(106, 108, 111);}.swal2-styled {height: 34px;font-weight: 400;}.swal2-modal .swal2-styled {box-shadow: none !important;}';
+    styleMsg.innerHTML = ':root{font-size: 11px;}.swal2-title {margin: 0 0 15px;}.swal2-title {margin: 0 0 15px;font-size: 20px;font-weight: 600;line-height: 24px;}div#swal2-content {font-size: 13px;color: rgb(106, 108, 111);}.swal2-styled {height: 34px;font-weight: 400;}.swal2-modal .swal2-styled {box-shadow: none !important;}.swal2-popup{width: 32em !important}';
     document.head.appendChild(styleMsg);
 
     Swal.fire({
@@ -330,9 +409,9 @@ function Msg(text, type, title, confirmButtonText, thenFn, cancelFn, isConfirm) 
         allowEscapeKey: false,
         focusConfirm: false,
         showCancelButton: isConfirm,
-        cancelButtonColor: '#34495e',
+        cancelButtonColor: isMovile ? '#19a0a1' : '#34495e',
         cancelButtonText: 'CANCELAR',
-        confirmButtonColor: isConfirm ? '#e74c3c' : '#34495e',
+        confirmButtonColor: isConfirm ? isMovile ? '#ed5565' : '#e74c3c' : isMovile ? '#19a0a1' : '#34495e',
         reverseButtons: isConfirm
     })
         .then(function (res) {
@@ -446,8 +525,8 @@ function LevelConstructor(selector, name, props) {
     this.selector = typeof selector === 'string' ? selector : '';
     this.name = typeof name === 'string' ? name : '';
     if (Object.prototype.toString.call(props) === '[object Object]') {
-        for (var i = 0, len = Object.keys(props).length; i < len; i++) {
-            this[Object.keys(props)[i]] = props[Object.keys(props)[i]];
+        for (var k in props) {
+            this[k] = props[k];
         }
     }
 }
@@ -498,6 +577,160 @@ function MoreThanTenMbFilesFormData(fd) {
         if (EsTipo('file', fd.get(k)) && fd.get(k).size > 10485760) return true;
     }
     return false;
+}
+// Para crear una tabla tipo arbol
+function TreeTable(idTable, settings) {
+    'use strict';
+
+    var table = document.getElementById(idTable);
+    if (!table || Object.prototype.toString.call(settings) !== "[object Object]") return false;
+
+    var allColumns = Array.isArray(settings.columns) ? settings.columns : [];
+    var data = Array.isArray(settings.data) ? settings.data : [];
+    var icons = Object.prototype.toString.call(icons) === "[object Object]" ? settings.icons : {};
+    var iconCollapsed = icons.collapsed ? icons.collapsed : 'fa fa-chevron-right';
+    var iconExpanded = icons.expanded ? icons.expanded : 'fa fa-chevron-down';
+    var columns = [];
+
+    for (var ac = 0, lenAc = allColumns.length; ac < lenAc; ac++) {
+        var currentColumn = allColumns[ac];
+        if (currentColumn['visible'] === false) continue;
+        columns.push(currentColumn);
+    }
+
+    table.innerHTML = '';
+
+    var thead = document.createElement('thead');
+    var trHead = document.createElement('tr');
+    var columnsLength = columns.length;
+
+    for (var cl = 0; cl < columnsLength; cl++) {
+        var ccl = columns[cl];
+        var th = document.createElement('th');
+        var title = ccl.title ? ccl.title : '';
+        var className = ccl.className ? ccl.className : '';
+        th.innerHTML = title;
+        th.className = className;
+        trHead.appendChild(th);
+    }
+
+    thead.appendChild(trHead);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+
+    if (data.length === 0) {
+        var trEmpty = document.createElement('tr');
+        var tdEmpty = document.createElement('td');
+        tdEmpty.innerHTML = 'NO SE ENCONTRARON REGISTROS';
+        tdEmpty.colSpan = columnsLength;
+        tdEmpty.style.textAlign = 'center';
+        trEmpty.appendChild(tdEmpty);
+        tbody.appendChild(trEmpty);
+    }
+    function actionLink() {
+        var icon = this;
+        var tr = this.parentNode.parentNode;
+        var target = '[data-parent="' + tr.getAttribute('data-index') + '"]';
+        var isExpanded = tr.getAttribute('data-control') === 'expanded';
+        var body = tr.parentNode;
+        var children = body.querySelectorAll(target);
+
+        if (!isExpanded) {
+
+            for (var c = 0, len = children.length; c < len; c++) {
+                var current = children[c];
+                current.style.display = '';
+                var a = current.querySelector('a[icon-tree-table]');
+                if (a) a.className = iconCollapsed;
+            }
+            icon.className = iconExpanded;
+            tr.setAttribute('data-control', 'expanded');
+        } else {
+
+            var closeChildren = function (children) {
+                for (var i = 0, len = children.length; i < len; i++) {
+                    var current = children[i];
+                    current.style.display = 'none';
+                    var id = current.getAttribute('data-index');
+                    var child = body.querySelectorAll('[data-parent="' + id + '"]');
+                    var currentExpanded = current.getAttribute('data-control') === 'expanded';
+                    if (child.length > 0 && currentExpanded) {
+                        current.setAttribute('data-control', 'collapsed');
+                        closeChildren(child);
+                    }
+                }
+            };
+            closeChildren(children);
+            icon.className = iconCollapsed;
+            tr.setAttribute('data-control', 'collapsed');
+        }
+    }
+
+    var index = -1;
+    function level(dataLevel, lv, parentRow) {
+
+        for (var id = 0, len = dataLevel.length; id < len; id++) {
+
+            index++;
+            var row = dataLevel[id];
+            var treeChildren = [];
+            var tr = document.createElement('tr');
+
+            for (var ch in row) {
+                if (Array.isArray(row[ch]) && row[ch].length > 0) treeChildren.push(ch);
+            }
+
+            for (var c = 0; c < columnsLength; c++) {
+                row[columns[c].data] = row[columns[c].data] ? row[columns[c].data] : '';
+            }
+
+            for (var i = 0; i < columnsLength; i++) {
+
+                var data = row[columns[i].data];
+                var text = typeof columns[i].render === 'function' ? columns[i].render(data, tr, row, index) : data;
+                var content = document.createElement('div');
+                content.style.display = 'inline-block';
+                content.innerHTML = text;
+                if (i === 0 && treeChildren.length > 0) {
+                    var tdPrimary = document.createElement('td');
+                    var icon = document.createElement('a');
+                    icon.className = iconCollapsed;
+                    icon.setAttribute('icon-tree-table', true);
+                    icon.addEventListener('click', actionLink, false);
+                    tdPrimary.appendChild(icon);
+                    tdPrimary.appendChild(content);
+                    tdPrimary.className = columns[i].className ? columns[i].className : '';
+                    tdPrimary.setAttribute('style', 'padding-left: ' + lv * 11 + 'px !important');
+                    tr.appendChild(tdPrimary);
+                    tr.setAttribute('data-control', 'collapsed');
+                } else {
+                    var td = document.createElement('td');
+                    td.appendChild(content);
+                    td.className = columns[i].className ? columns[i].className : '';
+                    tr.appendChild(td);
+                }
+                if (lv > 1) {
+                    tr.style.display = 'none';
+                    tr.setAttribute('data-parent', parentRow);
+                }
+                tr.setAttribute('data-index', index);
+                tr.setAttribute('data-level', lv);
+            }
+            tbody.appendChild(tr);
+
+            for (var t = 0, lent = treeChildren.length; t < lent; t++) {
+
+                var ct = treeChildren[t];
+
+                level(row[ct], lv + 1, index);
+            }
+        }
+    }
+
+    level(data, 1);
+
+    table.appendChild(tbody);
 }
 
 // #region POLYFILL
