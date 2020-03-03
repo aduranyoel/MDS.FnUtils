@@ -37,26 +37,70 @@ function Tx(tx, data, controller, thenFn, errorFn) {
 
     var defaultController = EsTipo('string', Tx.controller) ? Tx.controller + '/' : '';
     var currentController = controller !== null ? controller : defaultController;
+    var path = typeof SitePath === "string" ? SitePath : "";
 
     RunAjax({
-        url: SitePath + currentController + tx,
+        url: path + currentController + tx,
         data: data,
-        success: function(res) {
+        success: function (res) {
             thenFn(res);
         },
-        errorBE: function(err) {
-            errorFn(err);
-            Dlg.error(err.ErrorMessage, 'AVISO', err.ErrorDetail);
+        errorBE: function (err) {
+            Dlg.error(err.ErrorMessage, 'AVISO', err.ErrorDetail, errorFn.bind(this, err));
         }
     });
 }
+Tx.promise = function (tx, data, controller) {
+    return new Promise(function (resolve, reject) {
+
+        function thenFn(res) {
+            resolve(res);
+        }
+        function errorFn(err) {
+            reject(err);
+        }
+
+        Tx(tx, data, controller, thenFn, errorFn);
+
+    });
+};
+// Para observar un data
+function DataWatch() {
+    this.data = [];
+    this.subscriptors = [];
+}
+DataWatch.prototype.set = function (trace) {
+    this.data = trace;
+    this.notify();
+};
+DataWatch.prototype.add = function (item) {
+    this.data.push(item);
+    this.notify();
+};
+DataWatch.prototype.subscribe = function (subscribe) {
+    this.subscriptors.push(subscribe);
+};
+DataWatch.prototype.unsubscribe = function (subscriptor) {
+    this.subscriptors = this.subscriptors.filter(function (sub) {
+        return sub !== subscriptor;
+    });
+};
+DataWatch.prototype.notify = function () {
+    for (var i = 0, len = this.subscriptors.length; i < len; i++) {
+        var callback = this.subscriptors[i];
+        callback(this.data);
+    }
+};
 // Para las Trazas de las Tx
+var TxTrace = new DataWatch();
 Tx.initTrace = function (selector) {
 
-    Tx.trace = [];
+    Tx.trace = true;
 
     $(selector).off();
-    $(selector).on('click', function () {
+    $(selector).on('click', TraceAction);
+
+    function TraceAction() {
 
         var tableTrace = '<label>- Transacciones</label>'
             + '<table cellpadding="1" cellspacing="1" class="table table-responsive">'
@@ -68,7 +112,7 @@ Tx.initTrace = function (selector) {
             + '</thead>'
             + '<tbody>';
 
-        var datos = EsTipo('array', Tx.trace) ? Tx.trace : [];
+        var datos = EsTipo('array', TxTrace.data) ? TxTrace.data : [];
         datos.forEach(function (t) {
             if (t.hasOwnProperty('Transactions')) {
                 t.Transactions.forEach(function (e) {
@@ -99,7 +143,7 @@ Tx.initTrace = function (selector) {
 
         $('#TxTrace_Modal').modal();
 
-    });
+    }
 };
 // Ajax personalizado
 function RunAjax(obj) {
@@ -205,8 +249,8 @@ function RunAjax(obj) {
                 }
             }
             if (data.hasOwnProperty('Trace')) {
-                typeof Tx !== "undefined" && Tx.hasOwnProperty('trace') && EsTipo('array', Tx.trace)
-                    ? Tx.trace.push(data.Trace)
+                typeof Tx !== "undefined" && Tx.trace === true && typeof TxTrace !== "undefined" && typeof TxTrace.add === "function"
+                    ? TxTrace.add(data.Trace)
                     : typeof MDSJsUtil !== "undefined" && MDSJsUtil.hasOwnProperty('addTraces')
                         ? MDSJsUtil.addTraces(data.Trace) : null;
             }
@@ -228,7 +272,7 @@ function RunAjax(obj) {
     $.ajax(obj);
 }
 // Para mostrar Dialog
-function Dlg(message, title, detail, btnText, type) {
+function Dlg(message, title, detail, btnText, type, callback) {
 
     function valid(param) {
         return typeof param === 'string';
@@ -238,6 +282,7 @@ function Dlg(message, title, detail, btnText, type) {
     btnText = valid(btnText) ? btnText : 'ACEPTAR';
     detail = valid(detail) ? detail : null;
     type = valid(type) ? type : '';
+    callback = typeof callback === "function" ? callback : function () { };
     var isMovil = Dlg.movil === true;
     function ifDetail(param) {
         if (param === null) return '';
@@ -274,7 +319,7 @@ function Dlg(message, title, detail, btnText, type) {
         '<button type="button" class="close" data-dismiss="modal" aria-label="Close">' +
         '<span aria-hidden="true">&times;</span>' +
         '</button>' +
-        '<h5 class="modal-title" style="font-size: 15px;margin: 0;font-weight: normal;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">::: ' +  title + ' :::</h5>' +
+        '<h5 class="modal-title" style="font-size: 15px;margin: 0;font-weight: normal;overflow: hidden;text-overflow: ellipsis;white-space: nowrap;">::: ' + title + ' :::</h5>' +
         '</div>' +
         '<div class="modal-body">' +
         msgBody() +
@@ -291,14 +336,16 @@ function Dlg(message, title, detail, btnText, type) {
     $(modalContainer.querySelector('.modal')).on('hidden.bs.modal', function () {
 
         document.body.removeChild(modalContainer);
+        callback.call(this);
+
     });
     $(modalContainer.querySelector('.modal')).modal('show');
 }
-Dlg.error = function (message, title, detail, btnText) {
-    Dlg(message, title, detail, btnText, 'error');
+Dlg.error = function (message, title, detail, btnText, callback) {
+    Dlg(message, title, detail, btnText, 'error', callback);
 };
-Dlg.warning = function (message, title, detail, btnText) {
-    Dlg(message, title, detail, btnText, 'warning');
+Dlg.warning = function (message, title, detail, btnText, callback) {
+    Dlg(message, title, detail, btnText, 'warning', callback);
 };
 // Poner Evento
 function PutEvent(target, event, global, callback) {
@@ -425,15 +472,15 @@ function Msg(text, type, title, confirmButtonText, thenFn, cancelFn, isConfirm) 
             document.head.removeChild(styleMsg);
         });
 }
-Msg.confirm = function(text, type, title, confirmButtonText, thenFn, cancelFn) {
+Msg.confirm = function (text, type, title, confirmButtonText, thenFn, cancelFn) {
     Msg(text, type, title, confirmButtonText, thenFn, cancelFn, true);
 };
 // Delegacion de eventos
 function On(eventName, selector, handler) {
 
-    (function(E, d, w) {
+    (function (E, d, w) {
         if (!E.composedPath) {
-            E.composedPath = function() {
+            E.composedPath = function () {
                 if (this.path) {
                     return this.path;
                 }
@@ -452,7 +499,7 @@ function On(eventName, selector, handler) {
 
     document.addEventListener(
         eventName,
-        function(event) {
+        function (event) {
             var elements = document.querySelectorAll(selector);
             var path = event.composedPath();
             for (var j = 0, leng = path.length; j < leng; j++) {
@@ -750,19 +797,19 @@ Object.defineProperty(Object.prototype, 'treeTable', {
             var b = y(a); a = b.next().value; var c = b.next().value; b = b.next().value; c instanceof Blob && (c = new File([c],
                 b, { type: c.type, lastModified: c.lastModified })); return [a, c]
         }, R = "object" === typeof window ? window : "object" === typeof self ? self : this, S = R.FormData, T = R.XMLHttpRequest && R.XMLHttpRequest.prototype.send, U = R.Request && R.fetch, V = R.navigator && R.navigator.sendBeacon; p(); var W = R.Symbol && Symbol.toStringTag; W && (Blob.prototype[W] || (Blob.prototype[W] = "Blob"), "File" in R && !File.prototype[W] && (File.prototype[W] = "File")); try { new File([], "") } catch (a) {
-        R.File = function (b, c, d) {
-            b = new Blob(b, d); d = d && void 0 !== d.lastModified ? new Date(d.lastModified) :
-                new Date; Object.defineProperties(b, { name: { value: c }, lastModifiedDate: { value: d }, lastModified: { value: +d }, toString: { value: function () { return "[object File]" } } }); W && Object.defineProperty(b, W, { value: "File" }); return b
-        }
+            R.File = function (b, c, d) {
+                b = new Blob(b, d); d = d && void 0 !== d.lastModified ? new Date(d.lastModified) :
+                    new Date; Object.defineProperties(b, { name: { value: c }, lastModifiedDate: { value: d }, lastModified: { value: +d }, toString: { value: function () { return "[object File]" } } }); W && Object.defineProperty(b, W, { value: "File" }); return b
+            }
         } p(); v(); var X = function (a) {
-        this.b = []; if (!a) return this; var b = this; N(a.elements, function (c) {
-            if (c.name && !c.disabled && "submit" !== c.type && "button" !== c.type) if ("file" === c.type) {
-                var d = c.files && c.files.length ? c.files : [new File([], "", { type: "application/octet-stream" })]; N(d, function (e) {
-                    b.append(c.name,
-                        e)
-                })
-            } else "select-multiple" === c.type || "select-one" === c.type ? N(c.options, function (e) { !e.disabled && e.selected && b.append(c.name, e.value) }) : "checkbox" === c.type || "radio" === c.type ? c.checked && b.append(c.name, c.value) : (d = "textarea" === c.type ? c.value.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n") : c.value, b.append(c.name, d))
-        })
+            this.b = []; if (!a) return this; var b = this; N(a.elements, function (c) {
+                if (c.name && !c.disabled && "submit" !== c.type && "button" !== c.type) if ("file" === c.type) {
+                    var d = c.files && c.files.length ? c.files : [new File([], "", { type: "application/octet-stream" })]; N(d, function (e) {
+                        b.append(c.name,
+                            e)
+                    })
+                } else "select-multiple" === c.type || "select-one" === c.type ? N(c.options, function (e) { !e.disabled && e.selected && b.append(c.name, e.value) }) : "checkbox" === c.type || "radio" === c.type ? c.checked && b.append(c.name, c.value) : (d = "textarea" === c.type ? c.value.replace(/\r\n/g, "\n").replace(/\n/g, "\r\n") : c.value, b.append(c.name, d))
+            })
         }; k = X.prototype; k.append = function (a, b, c) { P(arguments, 2); var d = y(O.apply(null, arguments)), e = d.next().value, f = d.next().value; d = d.next().value; this.b.push([e, f, d]) }; k["delete"] = function (a) {
             P(arguments,
                 1); var b = []; a = String(a); N(this.b, function (c) { c[0] !== a && b.push(c) }); this.b = b
